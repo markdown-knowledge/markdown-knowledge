@@ -13,8 +13,8 @@
     "packages/vscode-extension"
   ],
   "scripts": {
-    "build": "npm run build -w mdkn && npm run build -w mdk-vscode",
-    "test": "npm run test -w mdkn",
+    "build": "npm run build -w markdown-knowledge && npm run build -w mdk-vscode",
+    "test": "npm run test -w markdown-knowledge",
     "clean": "npm run clean --workspaces --if-present"
   },
   "devDependencies": {

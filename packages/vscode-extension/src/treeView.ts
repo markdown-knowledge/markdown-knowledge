@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { ContainerStore } from "./store";
 import { toMdkUri } from "./fsProvider";
-import { DocumentInfo } from "mdkn";
+import { DocumentInfo } from "markdown-knowledge";
 
 export type MdkTreeItem = ContainerTreeItem | FolderTreeItem | DocumentTreeItem;
 

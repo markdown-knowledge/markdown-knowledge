@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { MdkContainer, configureSqlite } from "mdkn";
+import { MdkContainer, configureSqlite } from "markdown-knowledge";
 
 export class ContainerStore implements vscode.Disposable {
   private containers = new Map<string, MdkContainer>();

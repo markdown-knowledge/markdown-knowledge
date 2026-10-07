@@ -1,4 +1,4 @@
-# mdkn
+# markdown-knowledge (mdkn)
 
 **Markdown Knowledge (`.mdk`)** — single-file Markdown container with built-in SQLite full-text search for AI agents and humans.
 
@@ -10,11 +10,11 @@
 ## Installation
 
 ```bash
-# Install CLI globally
-npm install -g mdkn
+# Install CLI globally (provides 'mdkn' and 'mdk' commands)
+npm install -g markdown-knowledge
 
 # Or add to project
-npm install mdkn
+npm install markdown-knowledge
 ```
 
 ## CLI Usage
@@ -44,7 +44,7 @@ mdkn retrieve knowledge.mdk "how to deploy" --max-tokens 500
 ## JavaScript / TypeScript API
 
 ```typescript
-import { MdkContainer, retrieve, formatRetrieveMarkdown } from "mdkn";
+import { MdkContainer, retrieve, formatRetrieveMarkdown } from "markdown-knowledge";
 
 // Open container
 const mdk = await MdkContainer.open("knowledge.mdk");

@@ -1,5 +1,5 @@
 {
-  "name": "mdkn",
+  "name": "markdown-knowledge",
   "version": "0.1.0",
   "description": "Markdown Knowledge (.mdk) – single-file Markdown container with built-in SQLite search for AI.",
   "main": "dist/index.js",

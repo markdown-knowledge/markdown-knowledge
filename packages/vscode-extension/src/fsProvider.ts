@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ContainerStore } from "./store";
-import { normalizeDocPath } from "mdkn";
+import { normalizeDocPath } from "markdown-knowledge";
 
 export const MDK_SCHEME = "mdk";
 

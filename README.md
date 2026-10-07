@@ -1,7 +1,7 @@
 # Markdown Knowledge (`.mdk`)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/mdkn.svg)](https://www.npmjs.com/package/mdkn)
+[![npm version](https://img.shields.io/npm/v/markdown-knowledge.svg)](https://www.npmjs.com/package/markdown-knowledge)
 
 **Markdown Knowledge** is a single-file knowledge container format (`.mdk`) that packages multiple Markdown documents together with an embedded **SQLite full-text index** (FTS).
 
@@ -23,16 +23,16 @@ It is designed for two worlds:
 
 ## Installation
 
-Install the command line tool globally:
+Install the command line tool globally (provides `mdkn` and `mdk` commands):
 
 ```bash
-npm install -g mdkn
+npm install -g markdown-knowledge
 ```
 
 Or add the library to your Node.js / TypeScript project:
 
 ```bash
-npm install mdkn
+npm install markdown-knowledge
 ```
 
 ---
@@ -108,7 +108,7 @@ mdkn retrieve handbook.mdk "database incident response" --expand document
 ## Programmatic Library API
 
 ```typescript
-import { MdkContainer, retrieve, formatRetrieveMarkdown } from "mdkn";
+import { MdkContainer, retrieve, formatRetrieveMarkdown } from "markdown-knowledge";
 
 // 1. Open an existing container
 const mdk = await MdkContainer.open("handbook.mdk");

@@ -4,7 +4,7 @@ import { ContainerStore } from "./store";
 import { MdkFileSystemProvider, MDK_SCHEME, toMdkUri, parseMdkUri } from "./fsProvider";
 import { MdkTreeDataProvider, ContainerTreeItem, DocumentTreeItem, FolderTreeItem } from "./treeView";
 import { MdkDashboardProvider } from "./dashboard";
-import { MdkContainer } from "mdkn";
+import { MdkContainer } from "markdown-knowledge";
 
 export function activate(context: vscode.ExtensionContext) {
   const store = new ContainerStore(context);

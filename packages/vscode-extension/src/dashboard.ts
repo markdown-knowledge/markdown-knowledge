@@ -1,14 +1,11 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import MarkdownIt from "markdown-it";
 import { ContainerStore } from "./store";
 import { toMdkUri } from "./fsProvider";
-
-const mdRenderer = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-});
+import { renderMarkdown, getPreviewStyles, getPreviewScript } from "./webview/preview";
+import { getEditorStyles, getEditorToolbarHtml, getEditorScript } from "./webview/editor";
+import { getWorkbenchStyles } from "./webview/styles";
+import { DashboardViewData } from "./webview/types";
 
 export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider {
   constructor(private context: vscode.ExtensionContext, private store: ContainerStore) {}
@@ -32,7 +29,9 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
           activeDocPath = docPath;
           const raw = container.readDocument(docPath);
           const docInfo = container.getDocument(docPath);
-          const rendered = mdRenderer.render(raw);
+          const { html: rendered, frontmatter } = renderMarkdown(raw);
+          const tokens = Math.ceil(raw.length / 4);
+
           webviewPanel.webview.postMessage({
             type: "docLoaded",
             doc: {
@@ -40,9 +39,11 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
               title: docInfo.title,
               tags: docInfo.tags,
               size: docInfo.size,
+              tokens,
               updatedAt: docInfo.updatedAt,
               raw,
               rendered,
+              frontmatter,
             },
           });
         }
@@ -62,7 +63,7 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
           activeDocPath = docs[0].path;
         }
 
-        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, {
+        webviewPanel.webview.html = this.buildWorkbenchHtml(webviewPanel.webview, {
           title: container.manifest.title || path.basename(containerFsPath),
           filePath: containerFsPath,
           docCount: docs.length,
@@ -91,6 +92,14 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
       switch (msg.type) {
         case "selectDoc": {
           await sendDocData(msg.docPath);
+          break;
+        }
+        case "requestPreviewRender": {
+          const { html: rendered } = renderMarkdown(msg.raw || "");
+          webviewPanel.webview.postMessage({
+            type: "previewRendered",
+            rendered,
+          });
           break;
         }
         case "openInTab": {
@@ -147,7 +156,7 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
     await updateWebview();
   }
 
-  private getHtmlForWebview(webview: vscode.Webview, data: any): string {
+  private buildWorkbenchHtml(webview: vscode.Webview, data: DashboardViewData): string {
     const isFresh = data.indexStatus.fresh && data.hasPersistedIndex;
     const indexDotColor = isFresh ? "var(--vscode-testing-iconPassed, #4ec9b0)" : "var(--vscode-testing-iconQueued, #cca700)";
     const indexStatusText = isFresh
@@ -165,585 +174,345 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(data.title)}</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
-      color: var(--vscode-editor-foreground);
-      background-color: var(--vscode-editor-background);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      font-size: 13px;
-    }
-
-    /* 1. TOP HEADER (28px) */
-    .top-header {
-      height: 32px;
-      min-height: 32px;
-      background: var(--vscode-editorGroupHeader-tabsBackground, #1e1e1e);
-      border-bottom: 1px solid var(--vscode-panel-border, #2d2d2d);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 12px;
-      user-select: none;
-    }
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .container-title {
-      font-weight: 600;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .doc-count-badge {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, #888);
-      background: var(--vscode-badge-background, #3a3d41);
-      color: var(--vscode-badge-foreground, #fff);
-      padding: 1px 6px;
-      border-radius: 10px;
-    }
-    .index-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, #999);
-      margin-left: 6px;
-    }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: ${indexDotColor};
-    }
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    button.btn-header {
-      background: transparent;
-      color: var(--vscode-foreground, #ccc);
-      border: 1px solid transparent;
-      border-radius: 3px;
-      padding: 3px 8px;
-      font-size: 11px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    button.btn-header:hover {
-      background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-      border-color: var(--vscode-toolbar-hoverOutline, transparent);
-    }
-    button.btn-primary {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-    }
-    button.btn-primary:hover {
-      background: var(--vscode-button-hoverBackground);
-    }
-
-    /* 2. MAIN WORKSPACE (SPLIT PANE) */
-    .workspace {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-    }
-
-    /* LEFT SIDEBAR: Document List & Search */
-    .sidebar {
-      width: 270px;
-      min-width: 200px;
-      max-width: 450px;
-      background: var(--vscode-sideBar-background, #252526);
-      border-right: 1px solid var(--vscode-panel-border, #2d2d2d);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .search-container {
-      padding: 8px;
-      border-bottom: 1px solid var(--vscode-panel-border, #2d2d2d);
-    }
-    .search-input {
-      width: 100%;
-      padding: 6px 8px;
-      font-size: 12px;
-      border-radius: 3px;
-      border: 1px solid var(--vscode-input-border, #3c3c3c);
-      background: var(--vscode-input-background, #1e1e1e);
-      color: var(--vscode-input-foreground, #fff);
-      outline: none;
-    }
-    .search-input:focus {
-      border-color: var(--vscode-focusBorder, #007fd4);
-    }
-    .sidebar-list {
-      flex: 1;
-      overflow-y: auto;
-      list-style: none;
-    }
-    .doc-item {
-      padding: 7px 12px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .doc-item:hover {
-      background: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.15));
-    }
-    .doc-item.active {
-      background: var(--vscode-list-activeSelectionBackground, #094771);
-      color: var(--vscode-list-activeSelectionForeground, #fff);
-    }
-    .doc-item-title {
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .doc-item-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground, #888);
-    }
-    .doc-item.active .doc-item-meta {
-      color: rgba(255, 255, 255, 0.7);
-    }
-    .tag-badge {
-      font-size: 9px;
-      padding: 0 4px;
-      border-radius: 2px;
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    /* RIGHT DETAIL: Rendered Viewer & Editor */
-    .detail-pane {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      background: var(--vscode-editor-background, #1e1e1e);
-    }
-    .detail-toolbar {
-      height: 36px;
-      min-height: 36px;
-      border-bottom: 1px solid var(--vscode-panel-border, #2d2d2d);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 16px;
-      background: var(--vscode-editor-background, #1e1e1e);
-    }
-    .detail-doc-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      overflow: hidden;
-    }
-    .detail-doc-title {
-      font-weight: 600;
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .detail-doc-path {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, #888);
-      font-family: var(--vscode-editor-font-family, monospace);
-    }
-    .detail-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .view-mode-toggle {
-      display: inline-flex;
-      border: 1px solid var(--vscode-panel-border, #3c3c3c);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-    .toggle-btn {
-      background: transparent;
-      color: var(--vscode-foreground, #ccc);
-      border: none;
-      padding: 3px 10px;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    .toggle-btn.active {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-    }
-    button.btn-tab-open {
-      background: var(--vscode-button-secondaryBackground, #3a3d41);
-      color: var(--vscode-button-secondaryForeground, #fff);
-      border: none;
-      border-radius: 3px;
-      padding: 4px 10px;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    button.btn-tab-open:hover {
-      background: var(--vscode-button-secondaryHoverBackground, #45494e);
-    }
-    button.btn-save {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border: none;
-      border-radius: 3px;
-      padding: 4px 10px;
-      font-size: 11px;
-      cursor: pointer;
-    }
-
-    /* Content Area */
-    .content-area {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px 32px;
-      position: relative;
-    }
-
-    /* Rendered Markdown Typography */
-    .markdown-body {
-      max-width: 860px;
-      margin: 0 auto;
-      line-height: 1.6;
-      color: var(--vscode-editor-foreground);
-    }
-    .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
-      margin-top: 24px;
-      margin-bottom: 12px;
-      font-weight: 600;
-      line-height: 1.25;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      padding-bottom: 6px;
-    }
-    .markdown-body h1 { font-size: 24px; margin-top: 0; }
-    .markdown-body h2 { font-size: 18px; }
-    .markdown-body h3 { font-size: 15px; border-bottom: none; }
-    .markdown-body p, .markdown-body ul, .markdown-body ol {
-      margin-bottom: 16px;
-    }
-    .markdown-body ul, .markdown-body ol {
-      padding-left: 24px;
-    }
-    .markdown-body li {
-      margin-bottom: 4px;
-    }
-    .markdown-body code {
-      font-family: var(--vscode-editor-font-family, Consolas, 'Courier New', monospace);
-      font-size: 12px;
-      background: rgba(255, 255, 255, 0.06);
-      padding: 2px 5px;
-      border-radius: 3px;
-    }
-    .markdown-body pre {
-      background: var(--vscode-editorWidget-background, #141414);
-      border: 1px solid var(--vscode-widget-border, #2d2d2d);
-      border-radius: 5px;
-      padding: 12px 16px;
-      overflow-x: auto;
-      margin-bottom: 16px;
-    }
-    .markdown-body pre code {
-      background: transparent;
-      padding: 0;
-    }
-    .markdown-body blockquote {
-      border-left: 4px solid var(--vscode-focusBorder, #007fd4);
-      padding-left: 12px;
-      color: var(--vscode-descriptionForeground, #999);
-      margin-bottom: 16px;
-    }
-    .markdown-body table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 16px;
-    }
-    .markdown-body th, .markdown-body td {
-      border: 1px solid var(--vscode-panel-border, #333);
-      padding: 6px 12px;
-      text-align: left;
-    }
-    .markdown-body th {
-      background: rgba(255, 255, 255, 0.04);
-    }
-
-    /* Raw Markdown Editor View */
-    .editor-textarea {
-      width: 100%;
-      height: 100%;
-      border: none;
-      outline: none;
-      resize: none;
-      background: transparent;
-      color: var(--vscode-editor-foreground);
-      font-family: var(--vscode-editor-font-family, Consolas, 'Courier New', monospace);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    /* Search Results Highlight */
-    .search-hit-snippet {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, #aaa);
-      margin-top: 3px;
-      line-height: 1.3;
-    }
-    .search-hit-snippet mark {
-      background: var(--vscode-editor-findMatchHighlightBackground, #ea5c0066);
-      color: inherit;
-      border-radius: 2px;
-      padding: 0 2px;
-    }
-    .empty-state {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--vscode-descriptionForeground, #888);
-      font-size: 13px;
-    }
+    ${getWorkbenchStyles(indexDotColor)}
+    ${getPreviewStyles()}
+    ${getEditorStyles()}
   </style>
 </head>
 <body>
 
-  <!-- 1. TOP HEADER (STATUS & ACTIONS) -->
+  <!-- 1. TOP HEADER (32px status & global actions) -->
   <header class="top-header">
     <div class="header-left">
-      <span class="container-title">
-        📦 ${escapeHtml(data.title)}
-      </span>
+      <div class="container-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+          <path d="M6 6h10"></path>
+          <path d="M6 10h10"></path>
+        </svg>
+        <span>${escapeHtml(data.title)}</span>
+      </div>
       <span class="doc-count-badge">${data.docCount} docs</span>
-      <span class="index-indicator" title="${data.filePath}">
+      <div class="index-indicator" title="${escapeHtml(indexStatusText)}">
         <span class="status-dot"></span>
-        <span>${indexStatusText}</span>
-      </span>
+        <span>${escapeHtml(indexStatusText)}</span>
+      </div>
     </div>
+
     <div class="header-actions">
-      <button class="btn-header btn-primary" onclick="vscode.postMessage({ type: 'addDoc' })" title="Add Document">+ New Document</button>
-      <button class="btn-header" onclick="vscode.postMessage({ type: 'rebuildIndex' })" title="Rebuild SQLite Search Index">⚡ Reindex</button>
-      <button class="btn-header" onclick="vscode.postMessage({ type: 'importFolder' })" title="Import Folder of Markdown">📥 Import</button>
+      <button class="btn-header btn-primary" onclick="handleAddDoc()" title="Add Document">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New Doc
+      </button>
+      <button class="btn-header" onclick="handleRebuildIndex()" title="Re-index Container">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        Re-index
+      </button>
+      <button class="btn-header" onclick="handleImportFolder()" title="Import Directory">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Import
+      </button>
     </div>
   </header>
 
-  <!-- 2. MAIN WORKSPACE (SPLIT VIEW) -->
+  <!-- 2. MAIN WORKSPACE -->
   <main class="workspace">
-
-    <!-- LEFT SIDEBAR: DOCUMENTS & LIVE FILTER -->
+    <!-- LEFT SIDEBAR: Document List & Search -->
     <aside class="sidebar">
       <div class="search-container">
-        <input 
-          type="text" 
-          id="filterInput" 
-          class="search-input" 
-          placeholder="Filter or search content..." 
-          oninput="handleSearch(this.value)" 
-        />
+        <input type="text" class="search-input" id="searchInput" placeholder="Filter documents or full-text search..." />
       </div>
-      <ul id="docList" class="sidebar-list">
-        <!-- populated by JS -->
-      </ul>
+      <ul class="sidebar-list" id="docList"></ul>
     </aside>
 
-    <!-- RIGHT DETAIL: VIEWER & EDITOR -->
+    <!-- RIGHT DETAIL PANE: Rendered Preview & Inline Editor -->
     <section class="detail-pane">
       <div class="detail-toolbar">
         <div class="detail-doc-info">
-          <span id="activeDocTitle" class="detail-doc-title">Select a document</span>
-          <span id="activeDocPath" class="detail-doc-path"></span>
+          <span class="detail-doc-title" id="activeDocTitle">No document selected</span>
+          <span class="detail-doc-path" id="activeDocPath"></span>
         </div>
+
         <div class="detail-actions">
           <div class="view-mode-toggle">
-            <button id="btnModePreview" class="toggle-btn active" onclick="setMode('preview')">Preview</button>
-            <button id="btnModeEdit" class="toggle-btn" onclick="setMode('edit')">Edit</button>
+            <button class="toggle-btn active" id="btnModePreview" onclick="setViewMode('preview')" title="Rendered Preview">Preview</button>
+            <button class="toggle-btn" id="btnModeEdit" onclick="setViewMode('edit')" title="Inline Markdown Editor">Edit</button>
+            <button class="toggle-btn" id="btnModeSplit" onclick="setViewMode('split')" title="Side-by-side Live Split">Split</button>
           </div>
-          <button id="btnSave" class="btn-save" style="display: none;" onclick="saveCurrentDoc()">Save</button>
-          <button class="btn-tab-open" onclick="openActiveInTab()" title="Open in VS Code Editor Tab">Open in Editor Tab ↗</button>
+
+          <button class="btn-tab-open" onclick="openCurrentInTab()" title="Open document in native editor tab">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>
+            Open in Tab
+          </button>
+
+          <button class="btn-save" id="btnSave" onclick="saveCurrentDocument()" title="Save Changes (Ctrl+S)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8"/></svg>
+            Save
+          </button>
         </div>
       </div>
 
-      <div class="content-area">
-        <div id="previewContainer" class="markdown-body">
-          <div class="empty-state">Select a document from the left to read or edit.</div>
+      <!-- Content Area with Preview and Editor -->
+      <div class="content-layout mode-preview" id="contentLayout">
+        
+        <!-- PREVIEW PANE -->
+        <div class="preview-pane" id="previewPane">
+          <div class="markdown-container">
+            <div class="doc-meta-card" id="docMetaCard" style="display: none;">
+              <div class="doc-meta-header">
+                <span class="doc-meta-title" id="metaCardTitle"></span>
+              </div>
+              <div class="doc-meta-pills" id="metaCardPills"></div>
+            </div>
+            <article class="markdown-body" id="previewMarkdownBody">
+              <div class="empty-state">Select a document from the left sidebar to view its content.</div>
+            </article>
+          </div>
         </div>
-        <textarea id="editorTextarea" class="editor-textarea" style="display: none;" placeholder="Write markdown here..."></textarea>
+
+        <!-- EDITOR PANE -->
+        <div class="editor-pane" id="editorPane">
+          ${getEditorToolbarHtml()}
+          
+          <div class="editor-canvas-container">
+            <div class="editor-gutter" id="editorGutter">
+              <span class="editor-line-no">1</span>
+            </div>
+            <div class="editor-textarea-wrapper">
+              <textarea class="editor-textarea" id="editorTextarea" spellcheck="false" placeholder="Write markdown here..."></textarea>
+            </div>
+          </div>
+
+          <div class="editor-statusbar">
+            <div class="editor-statusbar-left">
+              <span class="dirty-pill is-saved" id="dirtyIndicator">✓ Saved</span>
+            </div>
+            <div class="editor-statusbar-right">
+              <span class="status-item" id="statusStats">0 lines, 0 words</span>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
-
   </main>
 
   <script>
     const vscode = acquireVsCodeApi();
-    const allDocs = ${docsJson};
-    let currentDoc = null;
-    let viewMode = 'preview'; // 'preview' | 'edit'
-    let searchTimeout = null;
+    const allDocuments = ${docsJson};
+    let currentDocPath = ${JSON.stringify(data.activeDocPath)};
+    let currentDocData = null;
+    let currentViewMode = "preview"; // 'preview' | 'edit' | 'split'
 
-    function renderDocList(docs, isSearchResult = false) {
-      const listEl = document.getElementById('docList');
+    ${getPreviewScript()}
+    ${getEditorScript()}
+
+    function init() {
+      renderDocList(allDocuments);
+      setupSearchListener();
+      setupEditorListeners();
+      setViewMode("preview");
+    }
+
+    function setViewMode(mode) {
+      currentViewMode = mode;
+      const layout = document.getElementById("contentLayout");
+      layout.className = "content-layout mode-" + mode;
+
+      document.getElementById("btnModePreview").classList.toggle("active", mode === "preview");
+      document.getElementById("btnModeEdit").classList.toggle("active", mode === "edit");
+      document.getElementById("btnModeSplit").classList.toggle("active", mode === "split");
+
+      if (mode === "edit" || mode === "split") {
+        setTimeout(() => {
+          updateEditorMetrics();
+          const textarea = document.getElementById("editorTextarea");
+          if (textarea && mode === "edit") textarea.focus();
+        }, 50);
+      }
+    }
+
+    function renderDocList(docs) {
+      const list = document.getElementById("docList");
+      list.innerHTML = "";
       if (!docs.length) {
-        listEl.innerHTML = '<li style="padding: 16px; color: var(--vscode-descriptionForeground); text-align: center;">No documents match.</li>';
+        list.innerHTML = '<li style="padding: 16px; color: var(--vscode-descriptionForeground); text-align: center;">No documents match.</li>';
         return;
       }
 
-      listEl.innerHTML = docs.map(d => {
-        const isActive = currentDoc && currentDoc.path === d.path;
-        const tagBadges = (d.tags || []).map(t => '<span class="tag-badge">' + escapeHtml(t) + '</span>').join(' ');
-        
-        let snippetHtml = '';
-        if (isSearchResult && d.snippet) {
-          const clean = d.snippet
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/«/g, '<mark>').replace(/»/g, '</mark>');
-          snippetHtml = '<div class="search-hit-snippet">' + clean + '</div>';
-        }
+      docs.forEach(d => {
+        const li = document.createElement("li");
+        li.className = "doc-item" + (d.path === currentDocPath ? " active" : "");
+        li.dataset.path = d.path;
 
-        return \`
-          <li class="doc-item \${isActive ? 'active' : ''}" onclick="selectDoc('\${d.path}')">
-            <div class="doc-item-title">\${escapeHtml(d.title || d.path)}</div>
-            <div class="doc-item-meta">
-              <span>\${escapeHtml(d.path)}</span>
-              <span>\${tagBadges}</span>
-            </div>
-            \${snippetHtml}
-          </li>
-        \`;
-      }).join('');
-    }
+        const titleDiv = document.createElement("div");
+        titleDiv.className = "doc-item-title";
+        titleDiv.innerText = d.title || d.path;
 
-    function selectDoc(docPath) {
-      vscode.postMessage({ type: 'selectDoc', docPath });
-    }
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "doc-item-meta";
+        const tokensEst = Math.ceil((d.size || 0) / 4);
+        metaDiv.innerHTML = '<span>' + d.path + '</span><span>~' + tokensEst + ' tkn</span>';
 
-    function setMode(mode) {
-      viewMode = mode;
-      const previewEl = document.getElementById('previewContainer');
-      const editorEl = document.getElementById('editorTextarea');
-      const btnPreview = document.getElementById('btnModePreview');
-      const btnEdit = document.getElementById('btnModeEdit');
-      const btnSave = document.getElementById('btnSave');
+        li.appendChild(titleDiv);
+        li.appendChild(metaDiv);
 
-      if (mode === 'preview') {
-        btnPreview.classList.add('active');
-        btnEdit.classList.remove('active');
-        previewEl.style.display = 'block';
-        editorEl.style.display = 'none';
-        btnSave.style.display = 'none';
-      } else {
-        btnEdit.classList.add('active');
-        btnPreview.classList.remove('active');
-        previewEl.style.display = 'none';
-        editorEl.style.display = 'block';
-        btnSave.style.display = 'inline-block';
-        editorEl.focus();
-      }
-    }
+        li.onclick = () => {
+          if (isDocDirty) {
+            if (!confirm("You have unsaved changes in the current document. Discard and switch?")) {
+              return;
+            }
+          }
+          currentDocPath = d.path;
+          document.querySelectorAll(".doc-item").forEach(el => el.classList.remove("active"));
+          li.classList.add("active");
+          vscode.postMessage({ type: "selectDoc", docPath: d.path });
+        };
 
-    function saveCurrentDoc() {
-      if (!currentDoc) return;
-      const content = document.getElementById('editorTextarea').value;
-      vscode.postMessage({
-        type: 'saveDoc',
-        docPath: currentDoc.path,
-        content
+        list.appendChild(li);
       });
     }
 
-    function openActiveInTab() {
-      if (currentDoc) {
-        vscode.postMessage({ type: 'openInTab', docPath: currentDoc.path });
-      }
+    function setupSearchListener() {
+      const input = document.getElementById("searchInput");
+      let debounceTimer = null;
+
+      input.addEventListener("input", (e) => {
+        clearTimeout(debounceTimer);
+        const q = e.target.value.trim();
+
+        if (!q) {
+          renderDocList(allDocuments);
+          return;
+        }
+
+        debounceTimer = setTimeout(() => {
+          // If query is longer than 2 characters, perform full-text search
+          if (q.length >= 2) {
+            vscode.postMessage({ type: "search", query: q });
+          } else {
+            // Local prefix filter
+            const filtered = allDocuments.filter(d => 
+              d.path.toLowerCase().includes(q.toLowerCase()) || 
+              (d.title && d.title.toLowerCase().includes(q.toLowerCase()))
+            );
+            renderDocList(filtered);
+          }
+        }, 200);
+      });
     }
 
-    function handleSearch(val) {
-      clearTimeout(searchTimeout);
-      const q = val.trim();
-      if (!q) {
-        renderDocList(allDocs);
+    function openCurrentInTab() {
+      if (!currentDocPath) return;
+      vscode.postMessage({ type: "openInTab", docPath: currentDocPath });
+    }
+
+    function saveCurrentDocument() {
+      if (!currentDocPath) return;
+      const textarea = document.getElementById("editorTextarea");
+      const content = textarea.value;
+      vscode.postMessage({
+        type: "saveDoc",
+        docPath: currentDocPath,
+        content: content
+      });
+      initialDocContent = content;
+      checkDirtyState();
+    }
+
+    function handleAddDoc() { vscode.postMessage({ type: "addDoc" }); }
+    function handleImportFolder() { vscode.postMessage({ type: "importFolder" }); }
+    function handleRebuildIndex() { vscode.postMessage({ type: "rebuildIndex" }); }
+
+    // Incoming messages from Extension host
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
+      switch (msg.type) {
+        case "docLoaded": {
+          currentDocData = msg.doc;
+          currentDocPath = msg.doc.path;
+          initialDocContent = msg.doc.raw;
+
+          // Header
+          document.getElementById("activeDocTitle").innerText = msg.doc.title || msg.doc.path;
+          document.getElementById("activeDocPath").innerText = msg.doc.path;
+
+          // Preview Meta Card
+          const metaCard = document.getElementById("docMetaCard");
+          const metaTitle = document.getElementById("metaCardTitle");
+          const metaPills = document.getElementById("metaCardPills");
+          metaCard.style.display = "flex";
+          metaTitle.innerText = msg.doc.title || msg.doc.path;
+          
+          let pillsHtml = '<span class="pill pill-path">' + msg.doc.path + '</span>';
+          pillsHtml += '<span class="pill">~' + msg.doc.tokens + ' tokens</span>';
+          pillsHtml += '<span class="pill">' + msg.doc.size + ' bytes</span>';
+          if (msg.doc.tags && msg.doc.tags.length) {
+            msg.doc.tags.forEach(t => {
+              pillsHtml += '<span class="pill pill-tag">#' + t + '</span>';
+            });
+          }
+          metaPills.innerHTML = pillsHtml;
+
+          // Rendered preview HTML
+          document.getElementById("previewMarkdownBody").innerHTML = msg.doc.rendered;
+
+          // Editor Textarea
+          const textarea = document.getElementById("editorTextarea");
+          textarea.value = msg.doc.raw;
+          updateEditorMetrics();
+          checkDirtyState();
+          break;
+        }
+
+        case "previewRendered": {
+          document.getElementById("previewMarkdownBody").innerHTML = msg.rendered;
+          break;
+        }
+
+        case "searchResults": {
+          renderSearchResults(msg.hits);
+          break;
+        }
+      }
+    });
+
+    function renderSearchResults(hits) {
+      const list = document.getElementById("docList");
+      list.innerHTML = "";
+      if (!hits.length) {
+        list.innerHTML = '<li style="padding: 16px; color: var(--vscode-descriptionForeground); text-align: center;">No matches found.</li>';
         return;
       }
 
-      // If query is small, do instant path/title filtering locally
-      const localMatches = allDocs.filter(d => 
-        d.path.toLowerCase().includes(q.toLowerCase()) || 
-        (d.title && d.title.toLowerCase().includes(q.toLowerCase())) ||
-        (d.tags && d.tags.some(t => t.toLowerCase().includes(q.toLowerCase())))
-      );
-      renderDocList(localMatches);
+      hits.forEach(h => {
+        const li = document.createElement("li");
+        li.className = "doc-item" + (h.path === currentDocPath ? " active" : "");
+        li.dataset.path = h.path;
 
-      // Also trigger FTS backend search for full-text content matches
-      searchTimeout = setTimeout(() => {
-        vscode.postMessage({ type: 'search', query: q });
-      }, 300);
+        const titleDiv = document.createElement("div");
+        titleDiv.className = "doc-item-title";
+        titleDiv.innerText = h.title || h.path;
+
+        const snippetDiv = document.createElement("div");
+        snippetDiv.className = "search-hit-snippet";
+        snippetDiv.innerHTML = h.snippet;
+
+        li.appendChild(titleDiv);
+        li.appendChild(snippetDiv);
+
+        li.onclick = () => {
+          currentDocPath = h.path;
+          document.querySelectorAll(".doc-item").forEach(el => el.classList.remove("active"));
+          li.classList.add("active");
+          vscode.postMessage({ type: "selectDoc", docPath: h.path });
+        };
+
+        list.appendChild(li);
+      });
     }
 
-    // Keyboard shortcut: Ctrl+S / Cmd+S in editor saves the doc
-    document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        if (viewMode === 'edit') {
-          saveCurrentDoc();
-        }
-      }
-    });
-
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg.type === 'docLoaded') {
-        currentDoc = msg.doc;
-        document.getElementById('activeDocTitle').textContent = currentDoc.title || currentDoc.path;
-        document.getElementById('activeDocPath').textContent = currentDoc.path;
-        document.getElementById('previewContainer').innerHTML = currentDoc.rendered;
-        document.getElementById('editorTextarea').value = currentDoc.raw;
-        // update active highlight in sidebar
-        const items = document.querySelectorAll('.doc-item');
-        items.forEach(el => el.classList.remove('active'));
-        const activeEl = Array.from(items).find(el => el.textContent.includes(currentDoc.path));
-        if (activeEl) activeEl.classList.add('active');
-      } else if (msg.type === 'searchResults') {
-        const inputVal = document.getElementById('filterInput').value.trim();
-        if (inputVal && msg.hits && msg.hits.length) {
-          renderDocList(msg.hits, true);
-        }
-      }
-    });
-
-    // Initial render of doc list
-    renderDocList(allDocs);
-    if (allDocs.length > 0) {
-      selectDoc(allDocs[0].path);
-    }
-
-    function escapeHtml(str) {
-      return (str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
+    init();
   </script>
 </body>
 </html>`;
@@ -751,10 +520,5 @@ export class MdkDashboardProvider implements vscode.CustomReadonlyEditorProvider
 }
 
 function escapeHtml(str: string): string {
-  return (str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

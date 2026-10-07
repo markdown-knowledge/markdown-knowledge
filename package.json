@@ -1,8 +1,25 @@
 {
   "name": "markdown-knowledge",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Markdown Knowledge (.mdk) – a single-file container of Markdown documents with built-in SQLite full-text search for AI.",
+  "keywords": [
+    "markdown",
+    "knowledge-base",
+    "mdk",
+    "mdkn",
+    "sqlite",
+    "full-text-search",
+    "fts",
+    "bm25",
+    "ai",
+    "llm",
+    "rag",
+    "retrieval",
+    "context",
+    "cli",
+    "vscode"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

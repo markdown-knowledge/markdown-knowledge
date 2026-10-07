@@ -1,7 +1,25 @@
 {
   "name": "markdown-knowledge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Markdown Knowledge (.mdk) – single-file Markdown container with built-in SQLite search for AI.",
+  "keywords": [
+    "markdown",
+    "knowledge-base",
+    "mdk",
+    "mdkn",
+    "sqlite",
+    "full-text-search",
+    "fts",
+    "bm25",
+    "ai",
+    "llm",
+    "rag",
+    "retrieval",
+    "context",
+    "cli",
+    "vscode",
+    "knowledge-management"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

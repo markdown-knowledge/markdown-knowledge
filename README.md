@@ -12,82 +12,117 @@
 
 ---
 
-## Installation & Build
+## Installation
 
 ```bash
-# Install dependencies
-npm install
+# Install CLI globally (provides both 'mdkn' and 'mdk' commands)
+npm install -g mdkn
 
-# Build all packages (mdkn and mdk-vscode)
-npm run build
-
-# Run test suite
-npm test
+# Or install in a project
+npm install mdkn
 ```
 
 ---
 
-## CLI Usage (`mdkn` or `mdk`)
+## CLI Reference (`mdkn` or `mdk`)
 
-The CLI commands can be invoked using either **`mdkn`** or **`mdk`**.
+Every command can be run using either **`mdkn`** or the shorthand alias **`mdk`**.  
+Every command accepts **`--json`** for machine-readable output designed for AI agents.
 
-### 1. Create a container
+### Container Management
+
 ```bash
+# Create a new empty container
 mdkn init handbook.mdk --title "Team Handbook"
+
+# View container metadata and SQLite index freshness
+mdkn info handbook.mdk
 ```
 
-### 2. Insert a document into container
+### Viewing & Exploring Documents
+
 ```bash
-# From inline text
-mdkn add handbook.mdk guides/deploy.md --title "Deploying" --tags "ops,k8s" --content "# Deploying\n\n## Kubernetes\nHelm charts are used."
+# List all documents inside container
+mdkn ls handbook.mdk
 
-# From an existing file
-mdkn add handbook.mdk faq.md --file ./faq.md
+# Filter by glob or tag
+mdkn ls handbook.mdk "guides/**" --tag ops
 
-# From stdin
-echo "# Quickstart" | mdkn add handbook.mdk quickstart.md --stdin
+# View document content
+mdkn cat handbook.mdk guides/deploy.md
+
+# View heading outline and line numbers (useful before targeting sections)
+mdkn outline handbook.mdk guides/deploy.md
 ```
 
-### 3. Insert content into a single Markdown file inside `.mdk`
-```bash
-# Append to the end of a document
-mdkn insert handbook.mdk guides/deploy.md --content "Canary releases use Argo Rollouts."
+### Adding & Editing Documents
 
-# Insert into a specific section (by heading text or breadcrumb)
+```bash
+# Add a document with metadata (front matter is automatically managed)
+mdkn add handbook.mdk guides/deploy.md --title "Deploying" --tags "ops,k8s" --file ./deploy.md
+
+# Add from inline text or stdin
+mdkn add handbook.mdk intro.md --content "# Welcome\nTeam documentation."
+echo "# Notes" | mdkn add handbook.mdk notes.md --stdin
+
+# Insert content into a specific section of a document
+# Positions: start | end | before | after | replace
 mdkn insert handbook.mdk guides/deploy.md \
   --section "Kubernetes" \
   --position end \
   --content "- Run helm test before promoting."
 
-# Positions: start | end | before | after | replace
+# Append content to the end of a document
+mdkn insert handbook.mdk guides/deploy.md --content "Canary deployments use Argo Rollouts."
+
+# Rename / Move a document
+mdkn mv handbook.mdk old-name.md new-name.md
+
+# Delete documents
+mdkn rm handbook.mdk draft.md obsolete.md
 ```
 
-### 4. Build or update SQLite search index inside `.mdk`
+### Bulk Import & Export
+
 ```bash
-# Incremental index update
+# Import a folder of markdown files into the container
+mdkn import handbook.mdk ./my-docs --prefix guides
+
+# Extract all documents from container to local directory
+mdkn export handbook.mdk ./extracted-docs
+```
+
+### SQLite Search Index
+
+```bash
+# Incrementally build or refresh the SQLite search index
 mdkn index handbook.mdk
 
-# Complete rebuild
+# Complete rebuild of the search index
 mdkn index handbook.mdk --rebuild
 
-# Check index status without modifying
+# Check index freshness status
 mdkn index handbook.mdk --status
+
+# Tip: Add '--index' to any mutating command (add, insert, rm, mv, import) 
+# to update the SQLite search index in the same write:
+mdkn add handbook.mdk faq.md --file ./faq.md --index
 ```
 
-### 5. Search & retrieve documents for AI agents
+### Search & AI Context Retrieval
 
 ```bash
-# Ranked full-text search (BM25)
+# Full-text search with Okapi BM25 ranking and highlighted snippets
 mdkn search handbook.mdk "how to roll back helm"
 
-# Machine-readable output for AI agents (--json)
+# Output structured JSON for AI agent tool calls
 mdkn search handbook.mdk "rollback" --json
 
-# Token-budgeted context bundle retrieval for LLM prompts
+# Retrieve token-budgeted context bundle for LLM prompts (default 4000 tokens)
 mdkn retrieve handbook.mdk "how to roll back helm release" --max-tokens 500
 
-# Document-level retrieval (returns whole markdown files of top hits)
-mdkn retrieve handbook.mdk "database incidents" --expand document
+# Retrieve whole documents instead of chunked sections
+mdkn retrieve handbook.mdk "database incident response" --expand document
 ```
 
 ---
@@ -97,7 +132,7 @@ mdkn retrieve handbook.mdk "database incidents" --expand document
 ```typescript
 import { MdkContainer, retrieve, formatRetrieveMarkdown } from "mdkn";
 
-// 1. Open or create
+// 1. Open or create a container
 const mdk = await MdkContainer.open("handbook.mdk");
 
 // 2. Read / Write documents
@@ -133,15 +168,6 @@ To publish the unified package:
 
 ```bash
 npm publish --workspace=mdkn --access public
-```
-
-Users can then install it with:
-```bash
-npm install -g mdkn
-```
-Or run directly with:
-```bash
-npx mdkn search handbook.mdk "query"
 ```
 
 ---

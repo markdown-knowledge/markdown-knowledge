@@ -1,0 +1,110 @@
+{
+  "name": "mdk-vscode",
+  "displayName": "Markdown Knowledge",
+  "description": "Browse, edit and search Markdown Knowledge (.mdk) containers directly in VS Code.",
+  "version": "0.1.0",
+  "publisher": "markdown-knowledge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markdown-knowledge/markdown-knowledge"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.mdk",
+    "onFileSystem:mdk"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mdkExplorer",
+          "title": "Markdown Knowledge",
+          "icon": "media/mdk.svg"
+        }
+      ]
+    },
+    "views": {
+      "mdkExplorer": [
+        {
+          "id": "mdk.containers",
+          "name": "Containers"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "mdk.containers",
+        "contents": "No .mdk containers found in this workspace.\n[Create Container](command:mdk.newContainer)\n[Open Container…](command:mdk.openContainer)"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "mdk.dashboard",
+        "displayName": "Markdown Knowledge",
+        "selector": [{ "filenamePattern": "*.mdk" }],
+        "priority": "default"
+      }
+    ],
+    "languages": [
+      {
+        "id": "mdk",
+        "extensions": [".mdk"],
+        "aliases": ["Markdown Knowledge"]
+      }
+    ],
+    "commands": [
+      { "command": "mdk.newContainer", "title": "New Container", "category": "MDK", "icon": "$(new-file)" },
+      { "command": "mdk.openContainer", "title": "Open Container…", "category": "MDK", "icon": "$(folder-opened)" },
+      { "command": "mdk.refresh", "title": "Refresh", "category": "MDK", "icon": "$(refresh)" },
+      { "command": "mdk.addDocument", "title": "Add Document", "category": "MDK", "icon": "$(add)" },
+      { "command": "mdk.importFolder", "title": "Import Folder…", "category": "MDK", "icon": "$(cloud-upload)" },
+      { "command": "mdk.openDocument", "title": "Open Document", "category": "MDK" },
+      { "command": "mdk.renameDocument", "title": "Rename Document", "category": "MDK" },
+      { "command": "mdk.deleteDocument", "title": "Delete Document", "category": "MDK", "icon": "$(trash)" },
+      { "command": "mdk.rebuildIndex", "title": "Rebuild Search Index", "category": "MDK", "icon": "$(database)" },
+      { "command": "mdk.search", "title": "Search Knowledge", "category": "MDK", "icon": "$(search)" },
+      { "command": "mdk.openDashboard", "title": "Open Dashboard", "category": "MDK", "icon": "$(dashboard)" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "mdk.search", "when": "view == mdk.containers", "group": "navigation@1" },
+        { "command": "mdk.newContainer", "when": "view == mdk.containers", "group": "navigation@2" },
+        { "command": "mdk.openContainer", "when": "view == mdk.containers", "group": "navigation@3" },
+        { "command": "mdk.refresh", "when": "view == mdk.containers", "group": "navigation@4" }
+      ],
+      "view/item/context": [
+        { "command": "mdk.addDocument", "when": "view == mdk.containers && viewItem =~ /^mdk\\.(container|folder)$/", "group": "inline@1" },
+        { "command": "mdk.search", "when": "view == mdk.containers && viewItem == mdk.container", "group": "inline@2" },
+        { "command": "mdk.addDocument", "when": "view == mdk.containers && viewItem =~ /^mdk\\.(container|folder)$/", "group": "1_edit@1" },
+        { "command": "mdk.importFolder", "when": "view == mdk.containers && viewItem == mdk.container", "group": "1_edit@2" },
+        { "command": "mdk.rebuildIndex", "when": "view == mdk.containers && viewItem == mdk.container", "group": "2_index@1" },
+        { "command": "mdk.openDashboard", "when": "view == mdk.containers && viewItem == mdk.container", "group": "2_index@2" },
+        { "command": "mdk.renameDocument", "when": "view == mdk.containers && viewItem == mdk.document", "group": "1_edit@1" },
+        { "command": "mdk.deleteDocument", "when": "view == mdk.containers && viewItem == mdk.document", "group": "1_edit@2" }
+      ],
+      "commandPalette": [
+        { "command": "mdk.openDocument", "when": "false" },
+        { "command": "mdk.renameDocument", "when": "false" },
+        { "command": "mdk.deleteDocument", "when": "false" }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run build && npx -y @vscode/vsce package --no-dependencies",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "mdkn": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.24.0"
+  }
+}

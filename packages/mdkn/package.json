@@ -1,0 +1,36 @@
+{
+  "name": "mdkn",
+  "version": "0.1.0",
+  "description": "Markdown Knowledge (.mdk) – single-file Markdown container with built-in SQLite search for AI.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mdkn": "dist/cli.js",
+    "mdk": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markdown-knowledge/markdown-knowledge"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "test": "npm run build && node --test \"test/*.test.js\"",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "gray-matter": "^4.0.3",
+    "jszip": "^3.10.1",
+    "markdown-it": "^15.0.2",
+    "sql.js": "^1.14.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
+    "@types/sql.js": "^1.4.9"
+  }
+}

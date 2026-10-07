@@ -1,0 +1,24 @@
+{
+  "name": "markdown-knowledge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Markdown Knowledge (.mdk) – a single-file container of Markdown documents with built-in SQLite full-text search for AI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markdown-knowledge/markdown-knowledge"
+  },
+  "workspaces": [
+    "packages/mdkn",
+    "packages/vscode-extension"
+  ],
+  "scripts": {
+    "build": "npm run build -w mdkn && npm run build -w mdk-vscode",
+    "test": "npm run test -w mdkn",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}
